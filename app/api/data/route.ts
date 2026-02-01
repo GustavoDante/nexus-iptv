@@ -35,10 +35,32 @@ export async function GET(request: NextRequest) {
     if (series_id) fetchUrl += `&series_id=${series_id}`;
     if (vod_id) fetchUrl += `&vod_id=${vod_id}`;
 
-    const res = await fetch(fetchUrl);
+    console.log('[API] Fetching from:', fetchUrl.replace(password, '***'));
+    
+    const res = await fetch(fetchUrl, {
+      // Adicionar timeout e configurações para produção
+      signal: AbortSignal.timeout(30000), // 30 segundos timeout
+      headers: {
+        'User-Agent': 'Nexus-IPTV/1.0',
+      },
+    });
+    
+    console.log('[API] Response status:', res.status, res.statusText);
     
     if (!res.ok) {
-        return NextResponse.json({ error: 'Upstream server error' }, { status: res.status });
+        const errorText = await res.text().catch(() => 'No error body');
+        console.error('[API] Upstream error:', {
+          status: res.status,
+          statusText: res.statusText,
+          body: errorText.substring(0, 500), // Primeiros 500 chars
+          url: fetchUrl.replace(password, '***'),
+        });
+        
+        return NextResponse.json({ 
+          error: 'Upstream server error',
+          details: `Server returned ${res.status}: ${res.statusText}`,
+          upstream_url: dns,
+        }, { status: res.status });
     }
 
     const data = await res.json();
@@ -86,7 +108,39 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('Proxy Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('[API] Fatal error:', error);
+    console.error('[API] Request details:', {
+      action,
+      dns: dns ? `${dns.substring(0, 20)}...` : 'missing',
+      hasUsername: !!username,
+      hasPassword: !!password,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    
+    // Erro específico de timeout
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      return NextResponse.json({ 
+        error: 'Request timeout',
+        message: 'O servidor Xtream demorou muito para responder (>30s)',
+        action,
+      }, { status: 504 });
+    }
+    
+    // Erro de rede/conexão
+    if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('network'))) {
+      return NextResponse.json({ 
+        error: 'Network error',
+        message: 'Não foi possível conectar ao servidor Xtream. Verifique se o DNS está correto e acessível.',
+        details: error.message,
+        action,
+      }, { status: 502 });
+    }
+    
+    return NextResponse.json({ 
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      action,
+    }, { status: 500 });
   }
 }
