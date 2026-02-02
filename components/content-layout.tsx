@@ -3,7 +3,6 @@
 import { Button } from '@/components/ui/button';
 import { VirtualGrid } from '@/components/virtual-grid';
 import { Channel } from '@/lib/types';
-import { fetchStreams } from '@/lib/xtream-client';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -15,16 +14,24 @@ interface ContentLayoutProps {
   title: string;
 }
 
+async function fetchData(action: string, categoryId?: string) {
+  const params = new URLSearchParams({ action });
+  if (categoryId) params.append('category_id', categoryId);
+  
+  const res = await fetch(`/api/data?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch data');
+  return res.json();
+}
+
 function ContentLayoutInner({ action, categoryId, title }: ContentLayoutProps) {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
   const router = useRouter();
   const pathname = usePathname();
 
-  // Busca streams diretamente do navegador do usuário
   const { data, isLoading, error } = useQuery<Channel[]>({
     queryKey: ['content', action, categoryId],
-    queryFn: () => fetchStreams(action, categoryId),
+    queryFn: () => fetchData(action, categoryId),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
   });

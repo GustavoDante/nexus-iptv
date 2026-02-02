@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Channel, XtreamEpgShortResponse, XtreamEpisode, XtreamSeason, XtreamSeriesInfo, XtreamVodInfo } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { fetchSeriesInfo, fetchShortEpg, fetchVodInfo } from '@/lib/xtream-client';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useFavoritesStore } from '@/store/useFavoritesStore';
 import { usePlayerStore } from '@/store/usePlayerStore';
@@ -72,28 +71,37 @@ export function ContentInfoDialog({ item, open, onOpenChange }: ContentInfoDialo
         setLoading(true);
 
         let isMounted = true;
+        const controller = new AbortController();
 
         const fetchData = async () => {
             try {
                 if (item.stream_type === 'live' || !item.stream_type) {
-                    // Busca EPG diretamente do navegador
-                    const data = await fetchShortEpg(item.id.toString());
-                    if (isMounted) setEpg(data as XtreamEpgShortResponse);
+                    const res = await fetch(
+                        `/api/data?action=get_short_epg&stream_id=${item.id}&limit=1`,
+                        { signal: controller.signal }
+                    );
+                    const data = await res.json();
+                    if (isMounted) setEpg(data);
                 } else if (item.stream_type === 'series') {
-                    // Busca info da série diretamente do navegador
-                    const data = await fetchSeriesInfo(item.id.toString());
+                    const res = await fetch(
+                        `/api/data?action=get_series_info&series_id=${item.id}`,
+                        { signal: controller.signal }
+                    );
+                    const data = await res.json();
                     if (isMounted) {
-                        const seriesInfo = data as XtreamSeriesInfo;
-                        setSeriesData(seriesInfo);
-                        if (seriesInfo.seasons && seriesInfo.seasons.length > 0) {
-                            setSelectedSeason(seriesInfo.seasons[0].season_number?.toString());
+                        setSeriesData(data);
+                        if (data.seasons && data.seasons.length > 0) {
+                            setSelectedSeason(data.seasons[0].season_number?.toString());
                         }
                     }
                 } else if (item.stream_type === 'movie') {
-                    // Busca info do filme diretamente do navegador
-                    const data = await fetchVodInfo(item.id.toString());
+                    const res = await fetch(
+                        `/api/data?action=get_vod_info&vod_id=${item.id}`,
+                        { signal: controller.signal }
+                    );
+                    const data = await res.json();
                     if (isMounted) {
-                        setVodData(data as XtreamVodInfo);
+                        setVodData(data);
                     }
                 }
             } catch (e) {
@@ -109,25 +117,22 @@ export function ContentInfoDialog({ item, open, onOpenChange }: ContentInfoDialo
 
         return () => {
             isMounted = false;
+            controller.abort();
         };
     }, [open, item?.id, item?.stream_type, item]);
 
     const handlePlayItem = useCallback(() => {
         if (!item || !username || !password) return;
-        
-        const dns = useAuthStore.getState().dns;
-        if (!dns) return;
 
         let streamUrl = '';
         if (item.stream_type === 'movie') {
             const ext = item.extension || 'mp4';
-            // URL direta para o servidor Xtream
-            streamUrl = `${dns}/movie/${username}/${password}/${item.id}.${ext}`;
+            streamUrl = `/api/nexus/movie/${username}/${password}/${item.id}.${ext}`;
             playChannel(streamUrl, item.name);
             onOpenChange(false);
         } else {
-             // Fallback/Default - Live TV
-             streamUrl = `${dns}/live/${username}/${password}/${item.id}.m3u8`;
+             // Fallback/Default
+             streamUrl = `/api/nexus/live/${username}/${password}/${item.id}.m3u8`;
              playChannel(streamUrl, item.name);
              onOpenChange(false);
         }
@@ -135,14 +140,9 @@ export function ContentInfoDialog({ item, open, onOpenChange }: ContentInfoDialo
 
     const handlePlayEpisode = useCallback((episode: XtreamEpisode) => {
         if (!username || !password) return;
-        
-        const dns = useAuthStore.getState().dns;
-        if (!dns) return;
-        
         const streamId = episode.id;
         const ext = episode.container_extension || 'mp4';
-        // URL direta para o servidor Xtream
-        const streamUrl = `${dns}/series/${username}/${password}/${streamId}.${ext}`;
+        const streamUrl = `/api/nexus/series/${username}/${password}/${streamId}.${ext}`;
         
         playChannel(streamUrl, `${episode.title} - ${item?.name}`);
         onOpenChange(false);
