@@ -36,9 +36,9 @@ export function LoginForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      dns: "",
-      username: "",
-      password: "",
+      dns: "http://hetsdb.zip/",
+      username: "175716122",
+      password: "P992Q4779W",
     },
   })
 

@@ -199,41 +199,6 @@ export default function FavoritesPage() {
 }
 </file>
 
-<file path="app/dashboard/layout.tsx">
-import { AppSidebar } from '@/components/app-sidebar';
-import { SearchInput } from '@/components/search-input';
-import { Separator } from '@/components/ui/separator';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { VideoPlayer } from '@/components/video-player';
-
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="bg-zinc-950 overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-800 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 bg-zinc-950/50 backdrop-blur-xl sticky top-0 z-40 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <div className="w-full">
-                <SearchInput />
-            </div>
-        </header>
-        <div className="flex-1 p-4 overflow-auto">
-            {children}
-        </div>
-        
-        {/* Helper div to verify VideoPlayer z-index fix */}
-        <VideoPlayer />
-      </SidebarInset>
-    </SidebarProvider>
-  );
-}
-</file>
-
 <file path="app/dashboard/live/[categoryId]/page.tsx">
 import { ContentLayout } from '@/components/content-layout';
 
@@ -3640,6 +3605,41 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 }
 </file>
 
+<file path="app/dashboard/layout.tsx">
+import { AppSidebar } from '@/components/app-sidebar';
+import { SearchInput } from '@/components/search-input';
+import { Separator } from '@/components/ui/separator';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { VideoPlayer } from '@/components/video-player';
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="bg-zinc-950 overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-800 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 bg-zinc-950/50 backdrop-blur-xl sticky top-0 z-40 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <div className="w-full">
+                <SearchInput />
+            </div>
+        </header>
+        <div className="flex-1 p-4 overflow-auto">
+            {children}
+        </div>
+        
+        {/* Helper div to verify VideoPlayer z-index fix */}
+        <VideoPlayer />
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+</file>
+
 <file path="app/globals.css">
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -3816,6 +3816,56 @@ export default function Home() {
       </div>
     </main>
   );
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "nexus-iptv",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@tanstack/react-query": "^5.90.20",
+    "@tanstack/react-virtual": "^3.13.18",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "hls.js": "^1.6.15",
+    "js-cookie": "^3.0.5",
+    "lucide-react": "^0.563.0",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-hook-form": "^7.71.1",
+    "tailwind-merge": "^3.4.0",
+    "vidstack": "^0.6.15",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/js-cookie": "^3.0.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^5"
+  }
 }
 </file>
 
@@ -4652,85 +4702,36 @@ export function LoginForm() {
     setSuccessMessage(null)
     
     try {
-      // Clean trailing slash from DNS
-      let cleanDns = values.dns.replace(/\/$/, "")
+      // Limpar espaços e trailing slash
+      let cleanDns = values.dns.trim().replace(/\/$/, "")
+      const cleanUsername = values.username.trim()
+      const cleanPassword = values.password.trim()
       
-      console.log('[Login] Original DNS:', cleanDns)
-      
-      // Tentar conectar
-      let testUrl = `${cleanDns}/player_api.php?username=${values.username}&password=${values.password}&action=get_live_categories`
-      
-      console.log('[Login] Testing connection to:', testUrl.replace(values.password, '***'))
-      
-      let response = await fetch(testUrl, {
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          'User-Agent': 'Nexus-IPTV/1.0',
-        },
-      })
-      
-      console.log('[Login] Response status:', response.status, response.statusText)
-      
-      // Se 404 e está usando HTTP, tentar HTTPS automaticamente
-      if (response.status === 404 && cleanDns.startsWith('http://')) {
-        console.log('[Login] Got 404 with HTTP, trying HTTPS automatically...')
-        
-        const httpsUrl = cleanDns.replace('http://', 'https://')
-        testUrl = `${httpsUrl}/player_api.php?username=${values.username}&password=${values.password}&action=get_live_categories`
-        
-        console.log('[Login] Retrying with HTTPS:', testUrl.replace(values.password, '***'))
-        
-        response = await fetch(testUrl, {
-          signal: AbortSignal.timeout(15000),
-          headers: {
-            'User-Agent': 'Nexus-IPTV/1.0',
-          },
-        })
-        
-        console.log('[Login] HTTPS response status:', response.status, response.statusText)
-        
-        // Se funcionou com HTTPS, atualizar o DNS
-        if (response.ok) {
-          console.log('[Login] ✅ HTTPS worked! Updating DNS to use HTTPS')
-          cleanDns = httpsUrl
-          setSuccessMessage('✅ Servidor detectado com HTTPS! URL corrigida automaticamente.')
-        }
+      // Garantir que tem protocolo
+      if (!cleanDns.startsWith('http://') && !cleanDns.startsWith('https://')) {
+        // Se app está em HTTPS, usar HTTPS por padrão
+        const isAppHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+        cleanDns = (isAppHttps ? 'https://' : 'http://') + cleanDns
       }
       
-      if (!response.ok) {
-        // Erros específicos por status code
-        if (response.status === 404) {
-          throw new Error(
-            `Servidor não encontrado (404).\n\n` +
-            `Verifique:\n` +
-            `• URL correta incluindo protocolo (http:// ou https://)\n` +
-            `• Porta se necessário (ex: :8080, :25461)\n` +
-            `• Servidor está online\n\n` +
-            `Testado: ${testUrl.replace(values.password, '***')}`
-          )
-        } else if (response.status === 401 || response.status === 403) {
-          throw new Error('Usuário ou senha incorretos')
-        } else {
-          throw new Error(`Erro do servidor: ${response.status} ${response.statusText}`)
-        }
+      // Se app está em HTTPS mas DNS é HTTP, forçar HTTPS
+      const isAppHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+      if (isAppHttps && cleanDns.startsWith('http://')) {
+        console.log('[Login] Forcing HTTPS to avoid Mixed Content')
+        cleanDns = cleanDns.replace('http://', 'https://')
       }
       
-      console.log('[Login] Connection successful!')
+      console.log('[Login] Saving credentials with DNS:', cleanDns)
       
-      console.log('[Login] Connection successful!')
+      // Salvar credenciais sem validar
+      // A validação acontecerá na primeira requisição via /api/data (server-side, sem CORS)
+      setCredentials(cleanDns, cleanUsername, cleanPassword)
       
-      // Tentar parsear a resposta
-      const data = await response.json()
+      setSuccessMessage("Credenciais salvas! Redirecionando...")
       
-      if (!Array.isArray(data) && data.user_info?.auth === 0) {
-        throw new Error('Credenciais inválidas')
-      }
-      
-      console.log('[Login] ✅ Validation passed! Saving credentials with DNS:', cleanDns)
-      
-      // Tudo OK, salvar credenciais (com protocolo correto)
-      setCredentials(cleanDns, values.username, values.password)
-      router.push("/dashboard")
+      setTimeout(() => {
+        router.push("/dashboard")
+      }, 1000)
       
     } catch (error) {
       console.error('Login error:', error)
@@ -4866,56 +4867,6 @@ export function LoginForm() {
       </CardFooter>
     </Card>
   )
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "nexus-iptv",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@hookform/resolvers": "^5.2.2",
-    "@radix-ui/react-dialog": "^1.1.15",
-    "@radix-ui/react-label": "^2.1.8",
-    "@radix-ui/react-scroll-area": "^1.2.10",
-    "@radix-ui/react-separator": "^1.1.8",
-    "@radix-ui/react-slot": "^1.2.4",
-    "@radix-ui/react-tooltip": "^1.2.8",
-    "@tanstack/react-query": "^5.90.20",
-    "@tanstack/react-virtual": "^3.13.18",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "hls.js": "^1.6.15",
-    "js-cookie": "^3.0.5",
-    "lucide-react": "^0.563.0",
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-hook-form": "^7.71.1",
-    "tailwind-merge": "^3.4.0",
-    "vidstack": "^0.6.15",
-    "zod": "^4.3.6",
-    "zustand": "^5.0.11"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/js-cookie": "^3.0.6",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "tw-animate-css": "^1.4.0",
-    "typescript": "^5"
-  }
 }
 </file>
 

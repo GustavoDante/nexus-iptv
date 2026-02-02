@@ -17,8 +17,16 @@ export function proxy(request: NextRequest) {
     const targetUrl = `${dns}${path}${searchParams}`;
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('Host', new URL(dns).host);
+    requestHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    requestHeaders.set('Accept', '*/*');
+    requestHeaders.set('Accept-Encoding', 'gzip, deflate');
+    requestHeaders.set('Connection', 'keep-alive');
 
-    return NextResponse.rewrite(new URL(targetUrl));
+    return NextResponse.rewrite(new URL(targetUrl), {
+      request: {
+        headers: requestHeaders,
+      },
+    });
   }
 }
 

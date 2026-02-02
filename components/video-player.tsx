@@ -19,15 +19,62 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// Wrapper component to handle key-based remounting and persistent state
 export function VideoPlayer() {
   const { isPlaying, streamUrl, streamTitle, closePlayer } = usePlayerStore();
+  
+  // Persistent state (kept across video changes)
   const [isMinimized, setIsMinimized] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+
+  if (!isPlaying || !streamUrl) return null;
+
+  return (
+    <VideoPlayerInner
+      key={streamUrl} // Forces remount when URL changes, resetting video-specific state
+      streamUrl={streamUrl}
+      streamTitle={streamTitle || ''}
+      closePlayer={closePlayer}
+      isMinimized={isMinimized}
+      setIsMinimized={setIsMinimized}
+      volume={volume}
+      setVolume={setVolume}
+      isMuted={isMuted}
+      setIsMuted={setIsMuted}
+    />
+  );
+}
+
+interface VideoPlayerInnerProps {
+  streamUrl: string;
+  streamTitle: string;
+  closePlayer: () => void;
+  isMinimized: boolean;
+  setIsMinimized: (value: boolean) => void;
+  volume: number;
+  setVolume: (value: number) => void;
+  isMuted: boolean;
+  setIsMuted: (value: boolean) => void;
+}
+
+function VideoPlayerInner({
+  streamUrl,
+  streamTitle,
+  closePlayer,
+  isMinimized,
+  setIsMinimized,
+  volume,
+  setVolume,
+  isMuted,
+  setIsMuted
+}: VideoPlayerInnerProps) {
+  // Video-specific state (resets on remount)
+  const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [volume, setVolume] = useState(1);
+  const [shouldShowControls, setShouldShowControls] = useState(true);
+  const showControls = shouldShowControls || isPaused || isLoading || isMinimized;
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [, setIsFullscreen] = useState(false);
@@ -37,18 +84,50 @@ export function VideoPlayer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Detect if stream is live or VOD based on URL
+  const isLiveStream = streamUrl?.includes('/live/') ?? false;
+  const isVOD = streamUrl?.includes('/movie/') || streamUrl?.includes('/series/');
+
   // Auto-hide controls after 3 seconds of inactivity
   const resetControlsTimeout = useCallback(() => {
-    setShowControls(true);
+    setShouldShowControls(true);
     if (hideControlsTimeoutRef.current) {
       clearTimeout(hideControlsTimeoutRef.current);
     }
-    hideControlsTimeoutRef.current = setTimeout(() => {
-      if (!isPaused) {
-        setShowControls(false);
-      }
-    }, 3000);
-  }, [isPaused]);
+    // Don't auto-hide if paused, loading, or minimized
+    if (!isPaused && !isLoading && !isMinimized) {
+      hideControlsTimeoutRef.current = setTimeout(() => {
+        setShouldShowControls(false);
+      }, 3000);
+    }
+  }, [isPaused, isLoading, isMinimized]);
+
+  // Time update handlers
+  const handleTimeUpdate = useCallback(() => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  }, []);
+
+  const handleDurationChange = useCallback(() => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration || 0);
+    }
+  }, []);
+
+  const handleLoadedMetadata = useCallback(() => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration || 0);
+      setCurrentTime(videoRef.current.currentTime);
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleVideoError = useCallback(() => {
+      console.error("Video Error");
+      setHasError(true);
+      setIsLoading(false);
+  }, []);
 
   // Initialize HLS player
   useEffect(() => {
@@ -56,14 +135,9 @@ export function VideoPlayer() {
 
     const video = videoRef.current;
     
-    const initializePlayer = () => {
-      setIsLoading(true);
-      setHasError(false);
-      setIsPaused(false);
-    };
+    // Explicit state resets are no longer needed here because
+    // the component key={streamUrl} causes a remount on change.
     
-    queueMicrotask(initializePlayer);
-
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -76,6 +150,12 @@ export function VideoPlayer() {
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 90,
+        maxLoadingDelay: 4,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 600,
+        xhrSetup: function (xhr) {
+          xhr.withCredentials = false;
+        },
       });
 
       hlsRef.current = hls;
@@ -84,6 +164,10 @@ export function VideoPlayer() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setIsLoading(false);
+        // Explicitly set muted/volume state to video element on load
+        video.muted = isMuted;
+        video.volume = volume;
+
         video.play().catch(console.error);
       });
 
@@ -106,17 +190,12 @@ export function VideoPlayer() {
         }
       });
     } else {
-      // Native playback for non-HLS or Safari HLS
+      // Native playback
       video.src = streamUrl;
-      video.addEventListener('loadedmetadata', () => {
-        setIsLoading(false);
-        video.play().catch(console.error);
-      });
-      video.addEventListener('error', (e) => {
-          console.error("Video Error:", e);
-          setHasError(true);
-          setIsLoading(false);
-      });
+      video.muted = isMuted;
+      video.volume = volume;
+      video.load(); // Force reload
+      video.play().catch(console.error);
     }
 
     return () => {
@@ -125,26 +204,7 @@ export function VideoPlayer() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl]);
-
-  // Update time display
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
-      setDuration(video.duration || 0);
-    };
-
-    video.addEventListener('timeupdate', handleTimeUpdate);
-    video.addEventListener('loadedmetadata', handleTimeUpdate);
-
-    return () => {
-      video.removeEventListener('timeupdate', handleTimeUpdate);
-      video.removeEventListener('loadedmetadata', handleTimeUpdate);
-    };
-  }, []);
+  }, [streamUrl, isMuted, volume  ]); // Removed persistent state deps as they are handled via refs/props
 
   // Fullscreen change listener
   useEffect(() => {
@@ -154,6 +214,16 @@ export function VideoPlayer() {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
+
+  // Clear timeout when paused, loading, or minimized
+  useEffect(() => {
+    if (isPaused || isLoading || isMinimized) {
+      if (hideControlsTimeoutRef.current) {
+        clearTimeout(hideControlsTimeoutRef.current);
+        hideControlsTimeoutRef.current = null;
+      }
+    }
+  }, [isPaused, isLoading, isMinimized]);
 
   const handlePlayPause = useCallback(() => {
     if (!videoRef.current) return;
@@ -171,7 +241,7 @@ export function VideoPlayer() {
     if (!videoRef.current) return;
     videoRef.current.muted = !videoRef.current.muted;
     setIsMuted(!isMuted);
-  }, [isMuted]);
+  }, [isMuted, setIsMuted]);
 
   const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
@@ -180,7 +250,7 @@ export function VideoPlayer() {
       setVolume(newVolume);
       setIsMuted(newVolume === 0);
     }
-  }, []);
+  }, [setVolume, setIsMuted]);
 
   const handleSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
@@ -189,6 +259,24 @@ export function VideoPlayer() {
       setCurrentTime(time);
     }
   }, []);
+
+  const handleSkip = useCallback((seconds: number) => {
+    if (!videoRef.current || !isVOD) return;
+    const maxTime = isFinite(duration) ? duration : videoRef.current.duration;
+    const newTime = Math.max(0, Math.min(videoRef.current.currentTime + seconds, maxTime));
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    resetControlsTimeout();
+  }, [duration, resetControlsTimeout, isVOD]);
+
+  const handleVolumeAdjust = useCallback((delta: number) => {
+    if (!videoRef.current) return;
+    const newVolume = Math.max(0, Math.min(1, videoRef.current.volume + delta));
+    videoRef.current.volume = newVolume;
+    setVolume(newVolume);
+    setIsMuted(newVolume === 0);
+    resetControlsTimeout();
+  }, [resetControlsTimeout, setVolume, setIsMuted]);
 
   const handleFullscreen = useCallback(async () => {
     if (!containerRef.current) return;
@@ -222,14 +310,82 @@ export function VideoPlayer() {
     closePlayer();
   }, [closePlayer]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          handlePlayPause();
+          break;
+        case 'arrowright':
+        case 'l':
+          e.preventDefault();
+          handleSkip(10);
+          break;
+        case 'arrowleft':
+        case 'j':
+          e.preventDefault();
+          handleSkip(-10);
+          break;
+        case 'm':
+          e.preventDefault();
+          handleMuteToggle();
+          break;
+        case 'f':
+          e.preventDefault();
+          handleFullscreen();
+          break;
+        case 'arrowup':
+          e.preventDefault();
+          handleVolumeAdjust(0.1);
+          break;
+        case 'arrowdown':
+          e.preventDefault();
+          handleVolumeAdjust(-0.1);
+          break;
+        case 'p':
+          e.preventDefault();
+          handlePiP();
+          break;
+        default:
+          // Numbers 0-9 to jump to 0-90% of video (only for VOD)
+          if (e.key >= '0' && e.key <= '9' && isVOD && duration > 0 && isFinite(duration)) {
+            e.preventDefault();
+            const percent = parseInt(e.key) / 10;
+            if (videoRef.current) {
+              videoRef.current.currentTime = duration * percent;
+            }
+          }
+          break;
+      }
+    };
+
+    // Component is only mounted when playing, so we can just add listener
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handlePlayPause, handleSkip, handleMuteToggle, handleFullscreen, handleVolumeAdjust, handlePiP, duration, isVOD]);
+
   const formatTime = (seconds: number) => {
     if (!isFinite(seconds)) return '--:--';
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
-
-  if (!isPlaying || !streamUrl) return null;
 
   return (
     <div 
@@ -241,7 +397,7 @@ export function VideoPlayer() {
             : "inset-0 w-full h-full"
       )}
       onMouseMove={resetControlsTimeout}
-      onMouseEnter={() => setShowControls(true)}
+      onMouseEnter={() => setShouldShowControls(true)}
     >
         {/* Video Element */}
         <video 
@@ -250,6 +406,10 @@ export function VideoPlayer() {
           playsInline
           autoPlay
           onClick={handlePlayPause}
+          onTimeUpdate={handleTimeUpdate}
+          onDurationChange={handleDurationChange}
+          onLoadedMetadata={handleLoadedMetadata}
+          onError={handleVideoError}
         />
 
         {/* Loading Overlay */}
@@ -323,12 +483,12 @@ export function VideoPlayer() {
           isMinimized ? "p-2" : "p-4"
         )}>
           {/* Progress Bar (only for VOD, not live) */}
-          {duration > 0 && duration !== Infinity && !isMinimized && (
+          {isVOD && !isMinimized && (
             <div className="mb-3 px-2">
               <input
                 type="range"
                 min={0}
-                max={duration}
+                max={duration || 100}
                 value={currentTime}
                 onChange={handleSeek}
                 className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-primary"
@@ -341,7 +501,7 @@ export function VideoPlayer() {
           )}
 
           {/* Live indicator */}
-          {(duration === Infinity || duration === 0) && !isMinimized && (
+          {isLiveStream && !isMinimized && (
             <div className="mb-2 px-2">
               <span className="inline-flex items-center gap-1 text-xs text-red-500 font-medium">
                 <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>

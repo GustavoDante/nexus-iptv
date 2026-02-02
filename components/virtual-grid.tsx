@@ -4,40 +4,20 @@ import { ChannelCard } from '@/components/channel-card';
 import { ContentInfoDialog } from '@/components/content-info-dialog';
 import { Button } from '@/components/ui/button';
 import { Channel } from '@/lib/types';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 
 interface VirtualGridProps {
   items: Channel[];
   itemsPerPage?: number;
 }
 
-const ITEMS_PER_PAGE = 60; // 60 itens por página (padrão)
-
-// Número de colunas baseado no breakpoint
-const getColumns = (width: number) => {
-  if (width >= 1280) return 6; // xl
-  if (width >= 1024) return 5; // lg
-  if (width >= 768) return 4;  // md
-  if (width >= 640) return 3;  // sm
-  return 2;
-};
-
-const getRowHeight = (containerWidth: number, columns: number, gap: number = 16) => {
-  const totalGap = gap * (columns - 1);
-  const padding = 16;
-  const cardWidth = (containerWidth - totalGap - padding) / columns;
-  const cardHeight = cardWidth * 1.5;
-  return cardHeight + 16;
-};
+const ITEMS_PER_PAGE = 30; // 30 itens por página
 
 export const VirtualGrid = memo(function VirtualGrid({ items, itemsPerPage = ITEMS_PER_PAGE }: VirtualGridProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const [selectedItem, setSelectedItem] = useState<Channel | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [columns, setColumns] = useState(4);
-  const [containerWidth, setContainerWidth] = useState(800);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Calcular total de páginas e itens paginados
@@ -48,50 +28,11 @@ export const VirtualGrid = memo(function VirtualGrid({ items, itemsPerPage = ITE
     return items.slice(startIndex, startIndex + itemsPerPage);
   }, [items, currentPage, itemsPerPage]);
 
-  // Reset para página 1 quando os items mudam (nova busca/categoria)
-  useEffect(() => {
+  const [prevItems, setPrevItems] = useState(items);
+  if (items !== prevItems) {
+    setPrevItems(items);
     setCurrentPage(1);
-  }, [items]);
-
-  // Observar mudanças de tamanho do container
-  useEffect(() => {
-    if (!parentRef.current) return;
-
-    const updateSize = (width: number) => {
-      const newColumns = getColumns(width);
-      setColumns((prev) => (prev !== newColumns ? newColumns : prev));
-      setContainerWidth((prev) => (prev !== width ? width : prev));
-    };
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        updateSize(entry.contentRect.width);
-      }
-    });
-
-    resizeObserver.observe(parentRef.current);
-    updateSize(parentRef.current.clientWidth);
-
-    return () => resizeObserver.disconnect();
-  }, []);
-
-  const rowCount = useMemo(() => Math.ceil(paginatedItems.length / columns), [paginatedItems.length, columns]);
-  
-  const estimatedRowHeight = useMemo(() => 
-    getRowHeight(containerWidth, columns), 
-    [containerWidth, columns]
-  );
-
-    // eslint-disable-next-line react-hooks/incompatible-library
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => estimatedRowHeight,
-    overscan: 2,
-  });
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
+  }
 
   const handleItemClick = useCallback((item: Channel) => {
       setSelectedItem(item);
@@ -109,7 +50,7 @@ export const VirtualGrid = memo(function VirtualGrid({ items, itemsPerPage = ITE
   const goToPage = useCallback((page: number) => {
     setCurrentPage(page);
     // Scroll para o topo ao mudar de página
-    parentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    topRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
   const goToFirstPage = useCallback(() => goToPage(1), [goToPage]);
@@ -139,43 +80,14 @@ export const VirtualGrid = memo(function VirtualGrid({ items, itemsPerPage = ITE
 
   return (
     <>
-        <div
-          ref={parentRef}
-          className="flex-1 min-h-0 w-full overflow-auto"
-        >
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
-          >
-            {virtualItems.map((virtualRow) => {
-              const startIndex = virtualRow.index * columns;
-              const rowItems = paginatedItems.slice(startIndex, startIndex + columns);
-
-              return (
-                <div
-                  key={virtualRow.key}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: `${virtualRow.size}px`,
-                    transform: `translateY(${virtualRow.start}px)`,
-                    display: 'grid',
-                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                    gap: '16px',
-                    padding: '8px',
-                  }}
-                >
-                  {rowItems.map((item) => (
-                    <ChannelCard key={item.id} item={item} onClick={handleItemClick} />
-                  ))}
+        <div ref={topRef} />
+        <div className="flex-1 min-h-0 w-full overflow-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 p-4">
+              {paginatedItems.map((item) => (
+                <div key={item.id} className="aspect-[2/3] w-full">
+                    <ChannelCard item={item} onClick={handleItemClick} />
                 </div>
-              );
-            })}
+              ))}
           </div>
         </div>
         

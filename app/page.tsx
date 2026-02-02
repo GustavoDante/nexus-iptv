@@ -1,6 +1,15 @@
 import { LoginForm } from "@/components/login-form";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function Home() {
+  const cookieStore = await cookies();
+  const username = cookieStore.get("nexus_username");
+
+  if (username) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-black">
       {/* Background with Gradient/Image */}

@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic'; // Prevent caching of credentials
 
+// Bypass SSL certificate validation for this route (fixes CERT_HAS_EXPIRED)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const action = searchParams.get('action');
@@ -168,6 +171,7 @@ export async function GET(request: NextRequest) {
       hasPassword: !!password,
       errorType: error instanceof Error ? error.constructor.name : typeof error,
       errorMessage: error instanceof Error ? error.message : String(error),
+      errorCause: error instanceof Error && 'cause' in error ? (error).cause : undefined,
     });
     
     // Erro específico de timeout
