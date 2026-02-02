@@ -48,17 +48,26 @@ export function LoginForm() {
     setSuccessMessage(null)
     
     try {
-      // Clean trailing slash from DNS
-      let cleanDns = values.dns.replace(/\/$/, "")
+      // Limpar espaços e trailing slash
+      let cleanDns = values.dns.trim().replace(/\/$/, "")
+      const cleanUsername = values.username.trim()
+      const cleanPassword = values.password.trim()
       
       console.log('[Login] Original DNS:', cleanDns)
       
+      // Se a aplicação está em HTTPS, forçar HTTPS no servidor Xtream
+      const isAppHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+      if (isAppHttps && cleanDns.startsWith('http://')) {
+        console.log('[Login] App is HTTPS, forcing HTTPS for Xtream server to avoid Mixed Content')
+        cleanDns = cleanDns.replace('http://', 'https://')
+      }
+      
       // Tentar conectar
-      let testUrl = `${cleanDns}/player_api.php?username=${values.username}&password=${values.password}&action=get_live_categories`
+      const testUrl = `${cleanDns}/player_api.php?username=${cleanUsername}&password=${cleanPassword}&action=get_live_categories`
       
-      console.log('[Login] Testing connection to:', testUrl.replace(values.password, '***'))
+      console.log('[Login] Testing connection to:', testUrl.replace(cleanPassword, '***'))
       
-      let response = await fetch(testUrl, {
+      const response = await fetch(testUrl, {
         signal: AbortSignal.timeout(15000),
         headers: {
           'User-Agent': 'Nexus-IPTV/1.0',
@@ -67,42 +76,16 @@ export function LoginForm() {
       
       console.log('[Login] Response status:', response.status, response.statusText)
       
-      // Se 404 e está usando HTTP, tentar HTTPS automaticamente
-      if (response.status === 404 && cleanDns.startsWith('http://')) {
-        console.log('[Login] Got 404 with HTTP, trying HTTPS automatically...')
-        
-        const httpsUrl = cleanDns.replace('http://', 'https://')
-        testUrl = `${httpsUrl}/player_api.php?username=${values.username}&password=${values.password}&action=get_live_categories`
-        
-        console.log('[Login] Retrying with HTTPS:', testUrl.replace(values.password, '***'))
-        
-        response = await fetch(testUrl, {
-          signal: AbortSignal.timeout(15000),
-          headers: {
-            'User-Agent': 'Nexus-IPTV/1.0',
-          },
-        })
-        
-        console.log('[Login] HTTPS response status:', response.status, response.statusText)
-        
-        // Se funcionou com HTTPS, atualizar o DNS
-        if (response.ok) {
-          console.log('[Login] ✅ HTTPS worked! Updating DNS to use HTTPS')
-          cleanDns = httpsUrl
-          setSuccessMessage('✅ Servidor detectado com HTTPS! URL corrigida automaticamente.')
-        }
-      }
-      
       if (!response.ok) {
         // Erros específicos por status code
         if (response.status === 404) {
           throw new Error(
             `Servidor não encontrado (404).\n\n` +
             `Verifique:\n` +
-            `• URL correta incluindo protocolo (http:// ou https://)\n` +
+            `• URL correta incluindo protocolo (https:// para acesso seguro)\n` +
             `• Porta se necessário (ex: :8080, :25461)\n` +
-            `• Servidor está online\n\n` +
-            `Testado: ${testUrl.replace(values.password, '***')}`
+            `• Servidor está online e aceita HTTPS\n\n` +
+            `Nota: Como você está acessando via HTTPS, o servidor também precisa usar HTTPS.`
           )
         } else if (response.status === 401 || response.status === 403) {
           throw new Error('Usuário ou senha incorretos')
@@ -110,8 +93,6 @@ export function LoginForm() {
           throw new Error(`Erro do servidor: ${response.status} ${response.statusText}`)
         }
       }
-      
-      console.log('[Login] Connection successful!')
       
       console.log('[Login] Connection successful!')
       
@@ -124,8 +105,8 @@ export function LoginForm() {
       
       console.log('[Login] ✅ Validation passed! Saving credentials with DNS:', cleanDns)
       
-      // Tudo OK, salvar credenciais (com protocolo correto)
-      setCredentials(cleanDns, values.username, values.password)
+      // Salvar credenciais limpas
+      setCredentials(cleanDns, cleanUsername, cleanPassword)
       router.push("/dashboard")
       
     } catch (error) {
