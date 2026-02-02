@@ -3,6 +3,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { VirtualGrid } from '@/components/virtual-grid';
 import { Category, Channel } from '@/lib/types';
+import { fetchCategories, fetchStreams } from '@/lib/xtream-client';
 import { useQuery } from '@tanstack/react-query';
 import { Clapperboard, Film, Loader2, Search, Tv } from 'lucide-react';
 import Link from 'next/link';
@@ -17,22 +18,11 @@ interface CategoryListProps {
   Icon: React.ElementType;
 }
 
-async function fetchCategories(action: string) {
-  const res = await fetch(`/api/data?action=${action}`);
-  if (!res.ok) throw new Error('Failed to fetch categories');
-  return res.json();
-}
-
-async function fetchAllStreams(action: string) {
-  const res = await fetch(`/api/data?action=${action}`);
-  if (!res.ok) throw new Error('Failed to fetch streams');
-  return res.json();
-}
-
 function CategoryListInner({ action, streamAction, title, baseRoute, Icon }: CategoryListProps) {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
   
+  // Busca categorias diretamente do navegador do usuário
   const { data: categories, isLoading: loadingCategories, error: categoriesError } = useQuery<Category[]>({
     queryKey: ['categories', action],
     queryFn: () => fetchCategories(action),
@@ -43,7 +33,7 @@ function CategoryListInner({ action, streamAction, title, baseRoute, Icon }: Cat
   // Buscar todos os streams apenas quando há uma busca
   const { data: allStreams, isLoading: loadingStreams } = useQuery<Channel[]>({
     queryKey: ['allStreams', streamAction],
-    queryFn: () => fetchAllStreams(streamAction),
+    queryFn: () => fetchStreams(streamAction),
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
     enabled: !!query, // Só busca quando tem query
