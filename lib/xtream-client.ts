@@ -1,7 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/store/useAuthStore';
 import { Category, Channel, XtreamCategory, XtreamSeries, XtreamStream } from '@/lib/types';
+import { useAuthStore } from '@/store/useAuthStore';
 
 /**
  * Serviço para fazer requisições direto do cliente (navegador)
