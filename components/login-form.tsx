@@ -53,61 +53,31 @@ export function LoginForm() {
       const cleanUsername = values.username.trim()
       const cleanPassword = values.password.trim()
       
-      console.log('[Login] Original DNS:', cleanDns)
+      // Garantir que tem protocolo
+      if (!cleanDns.startsWith('http://') && !cleanDns.startsWith('https://')) {
+        // Se app está em HTTPS, usar HTTPS por padrão
+        const isAppHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+        cleanDns = (isAppHttps ? 'https://' : 'http://') + cleanDns
+      }
       
-      // Se a aplicação está em HTTPS, forçar HTTPS no servidor Xtream
+      // Se app está em HTTPS mas DNS é HTTP, forçar HTTPS
       const isAppHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
       if (isAppHttps && cleanDns.startsWith('http://')) {
-        console.log('[Login] App is HTTPS, forcing HTTPS for Xtream server to avoid Mixed Content')
+        console.log('[Login] Forcing HTTPS to avoid Mixed Content')
         cleanDns = cleanDns.replace('http://', 'https://')
       }
       
-      // Tentar conectar
-      const testUrl = `${cleanDns}/player_api.php?username=${cleanUsername}&password=${cleanPassword}&action=get_live_categories`
+      console.log('[Login] Saving credentials with DNS:', cleanDns)
       
-      console.log('[Login] Testing connection to:', testUrl.replace(cleanPassword, '***'))
-      
-      const response = await fetch(testUrl, {
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          'User-Agent': 'Nexus-IPTV/1.0',
-        },
-      })
-      
-      console.log('[Login] Response status:', response.status, response.statusText)
-      
-      if (!response.ok) {
-        // Erros específicos por status code
-        if (response.status === 404) {
-          throw new Error(
-            `Servidor não encontrado (404).\n\n` +
-            `Verifique:\n` +
-            `• URL correta incluindo protocolo (https:// para acesso seguro)\n` +
-            `• Porta se necessário (ex: :8080, :25461)\n` +
-            `• Servidor está online e aceita HTTPS\n\n` +
-            `Nota: Como você está acessando via HTTPS, o servidor também precisa usar HTTPS.`
-          )
-        } else if (response.status === 401 || response.status === 403) {
-          throw new Error('Usuário ou senha incorretos')
-        } else {
-          throw new Error(`Erro do servidor: ${response.status} ${response.statusText}`)
-        }
-      }
-      
-      console.log('[Login] Connection successful!')
-      
-      // Tentar parsear a resposta
-      const data = await response.json()
-      
-      if (!Array.isArray(data) && data.user_info?.auth === 0) {
-        throw new Error('Credenciais inválidas')
-      }
-      
-      console.log('[Login] ✅ Validation passed! Saving credentials with DNS:', cleanDns)
-      
-      // Salvar credenciais limpas
+      // Salvar credenciais sem validar
+      // A validação acontecerá na primeira requisição via /api/data (server-side, sem CORS)
       setCredentials(cleanDns, cleanUsername, cleanPassword)
-      router.push("/dashboard")
+      
+      setSuccessMessage("Credenciais salvas! Redirecionando...")
+      
+      setTimeout(() => {
+        router.push("/dashboard")
+      }, 1000)
       
     } catch (error) {
       console.error('Login error:', error)
