@@ -1,14 +1,88 @@
 # Guia de Deploy - Nexus IPTV
 
-## Problema: 404 em Produção
+## ✅ SOLUÇÃO: HTTP vs HTTPS
 
-O erro "Erro ao carregar categorias" com 404 acontece porque a API Route `/api/data/route.ts` não está sendo encontrada.
+### O Problema Descoberto
 
-## Causa Provável
+O servidor Xtream **requer HTTPS** mas o usuário estava salvando a URL com **HTTP**.
 
-Em produção, você precisa fazer o **build** da aplicação Next.js antes de iniciar com PM2. Diferente do modo desenvolvimento (`next dev`), o modo produção (`next start`) requer que o build seja feito primeiro.
+**Exemplo:**
+- ❌ Salvo (não funciona): `http://hetsdb.zip`
+- ✅ Correto (funciona): `https://hetsdb.zip`
 
-## Solução - Passos para Deploy
+### Solução Implementada
+
+1. **Detecção Automática no Login:**
+   - Se você digitar `http://` e retornar 404
+   - O sistema **automaticamente tenta com https://**
+   - Se funcionar, salva com HTTPS
+   - Mostra mensagem: "✅ Servidor detectado com HTTPS! URL corrigida automaticamente."
+
+2. **Logs Detalhados:**
+   - Todos os passos da requisição são logados
+   - Protocolo, hostname, porta, headers
+   - Tempo de resposta
+   - Redirecionamentos
+   - Erros específicos
+
+### Como Usar
+
+#### No Login:
+1. Digite a URL (pode ser HTTP ou HTTPS)
+2. O sistema testa automaticamente
+3. Corrige para HTTPS se necessário
+4. Salva a versão que funciona
+
+#### URLs Aceitas:
+```
+✅ https://hetsdb.zip
+✅ http://hetsdb.zip (será convertido automaticamente)
+✅ https://servidor.com:8080
+✅ http://servidor.com:25461 (será convertido se necessário)
+```
+
+### Verificar Logs em Produção
+
+Após fazer deploy, os logs vão mostrar:
+
+```bash
+pm2 logs nexus-iptv
+```
+
+**Logs no Login:**
+```
+[Login] Original DNS: http://hetsdb.zip
+[Login] Testing connection to: http://hetsdb.zip/player_api.php?...
+[Login] Response status: 404 Not Found
+[Login] Got 404 with HTTP, trying HTTPS automatically...
+[Login] Retrying with HTTPS: https://hetsdb.zip/player_api.php?...
+[Login] HTTPS response status: 200 OK
+[Login] ✅ HTTPS worked! Updating DNS to use HTTPS
+[Login] ✅ Validation passed! Saving credentials with DNS: https://hetsdb.zip
+```
+
+**Logs na API:**
+```
+[API] ========== REQUEST START ==========
+[API] Original DNS from cookie: https://hetsdb.zip
+[API] Protocol detection: { usesHttps: true, usesHttp: false }
+[API] Final URL (with protocol): https://hetsdb.zip/player_api.php?...
+[API] URL protocol: https:
+[API] URL hostname: hetsdb.zip
+[API] URL port: default
+[API] Starting fetch...
+[API] ========== RESPONSE RECEIVED ==========
+[API] Response time: 342ms
+[API] Response status: 200 OK
+[API] Response URL (after redirects): https://hetsdb.zip/player_api.php?...
+[API] Response redirected: false
+[API] ========== SUCCESS ==========
+[API] Data type: array[25]
+```
+
+---
+
+## Problema Anterior: 404 em Produção (API Routes)
 
 ### No servidor (via SSH):
 

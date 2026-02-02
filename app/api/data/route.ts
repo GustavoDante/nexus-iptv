@@ -21,6 +21,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    console.log('[API] ========== REQUEST START ==========');
+    console.log('[API] Original DNS from cookie:', dns);
+    console.log('[API] Action:', action);
+    console.log('[API] Username:', username);
+    console.log('[API] Has password:', !!password);
+    
+    // Detectar protocolo
+    const usesHttps = dns.startsWith('https://');
+    const usesHttp = dns.startsWith('http://');
+    console.log('[API] Protocol detection:', { usesHttps, usesHttp });
+    
     const apiUrl = `${dns}/player_api.php?username=${username}&password=${password}&action=${action}`;
     
     // Check if we need to fetch category_id specifically (for filtered streams)
@@ -35,26 +46,60 @@ export async function GET(request: NextRequest) {
     if (series_id) fetchUrl += `&series_id=${series_id}`;
     if (vod_id) fetchUrl += `&vod_id=${vod_id}`;
 
-    console.log('[API] Fetching from:', fetchUrl.replace(password, '***'));
+    console.log('[API] Final URL (with protocol):', fetchUrl.replace(password, '***'));
+    console.log('[API] URL protocol:', new URL(fetchUrl).protocol);
+    console.log('[API] URL hostname:', new URL(fetchUrl).hostname);
+    console.log('[API] URL port:', new URL(fetchUrl).port || 'default');
     
-    const res = await fetch(fetchUrl, {
-      // Adicionar timeout e configurações para produção
-      signal: AbortSignal.timeout(30000), // 30 segundos timeout
+    const fetchOptions = {
+      signal: AbortSignal.timeout(30000),
       headers: {
         'User-Agent': 'Nexus-IPTV/1.0',
+        'Accept': 'application/json',
       },
-    });
+      redirect: 'follow' as RequestRedirect, // Seguir redirecionamentos
+    };
     
+    console.log('[API] Fetch options:', JSON.stringify(fetchOptions, null, 2));
+    console.log('[API] Starting fetch...');
+    
+    const fetchStart = Date.now();
+    const res = await fetch(fetchUrl, fetchOptions);
+    const fetchDuration = Date.now() - fetchStart;
+    
+    console.log('[API] ========== RESPONSE RECEIVED ==========');
+    console.log('[API] Response time:', fetchDuration + 'ms');
     console.log('[API] Response status:', res.status, res.statusText);
+    console.log('[API] Response URL (after redirects):', res.url);
+    console.log('[API] Response headers:', JSON.stringify(Object.fromEntries(res.headers.entries()), null, 2));
+    console.log('[API] Response redirected:', res.redirected);
+    console.log('[API] Response type:', res.type);
     
     if (!res.ok) {
+        console.log('[API] ========== ERROR RESPONSE ==========');
         const errorText = await res.text().catch(() => 'No error body');
-        console.error('[API] Upstream error:', {
+        console.error('[API] Upstream error details:', {
           status: res.status,
           statusText: res.statusText,
-          body: errorText.substring(0, 500), // Primeiros 500 chars
+          body: errorText.substring(0, 500),
           url: fetchUrl.replace(password, '***'),
+          finalUrl: res.url,
+          redirected: res.redirected,
         });
+        
+        // Se for 404 com HTTP, sugerir tentar HTTPS
+        if (res.status === 404 && dns.startsWith('http://')) {
+          console.log('[API] 💡 SUGGESTION: 404 with HTTP protocol. Server might require HTTPS.');
+          console.log('[API] Try updating DNS to use https:// instead of http://');
+          
+          return NextResponse.json({ 
+            error: 'Upstream server error',
+            details: `Server returned ${res.status}: ${res.statusText}`,
+            suggestion: 'Servidor retornou 404. Tente usar https:// ao invés de http:// no DNS.',
+            upstream_url: dns,
+            tested_url: fetchUrl.replace(password, '***'),
+          }, { status: res.status });
+        }
         
         return NextResponse.json({ 
           error: 'Upstream server error',
@@ -62,8 +107,15 @@ export async function GET(request: NextRequest) {
           upstream_url: dns,
         }, { status: res.status });
     }
+    
+    console.log('[API] ========== SUCCESS ==========');
+    console.log('[API] Starting JSON parse...');
 
     const data = await res.json();
+    
+    console.log('[API] JSON parsed successfully');
+    console.log('[API] Data type:', Array.isArray(data) ? `array[${data.length}]` : typeof data);
+    console.log('[API] First item sample:', Array.isArray(data) && data[0] ? JSON.stringify(data[0]).substring(0, 200) : 'N/A');
 
     // Optimization Layer for CATEGORIES
     if (action === 'get_live_categories' || action === 'get_vod_categories' || action === 'get_series_categories') {
